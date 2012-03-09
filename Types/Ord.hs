@@ -1,13 +1,16 @@
-{-# LANGUAGE PolyKinds, TypeFamilies #-}
+{-# LANGUAGE DataKinds, TypeFamilies #-}
+-- | Helpful type families on the 'Ordering' type
 module Types.Ord where
 
 import Types.Common
 
+-- | Compare by the first ordering, then the second
 type family (p :: Ordering) `ThenCompareBy` (q :: Ordering) :: Ordering
 type instance LT `ThenCompareBy` r = LT
 type instance EQ `ThenCompareBy` r = r
 type instance GT `ThenCompareBy` r = GT
 
+-- | Are the two orderings equal?
 type family OrdEq (p :: Ordering) (q :: Ordering) :: Bool
 --
 type instance OrdEq LT LT = True

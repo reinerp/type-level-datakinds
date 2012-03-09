@@ -1,0 +1,25 @@
+Name:                type-level-datakinds
+Version:             0.1
+Synopsis:            Type-level programming with DataKinds
+Description:         Type-level programming with DataKinds
+License:             BSD3
+License-file:        LICENSE
+Author:              Reiner Pope
+Maintainer:          reiner.pope@gmail.com
+Copyright:           Copyright (C) 2012 Reiner Pope
+Category:            Type System
+Build-type:          Simple
+-- Extra-source-files:  
+Cabal-version:       >=1.2
+
+Library
+  Exposed-modules:     
+    Types.Bool,
+    Types.Common,
+    Types.Nat,
+    Types.Ord
+  Build-depends:
+    base >= 4.5 && <5,
+    template-haskell < 2.9
+  -- Other-modules:       
+  -- Build-tools:         

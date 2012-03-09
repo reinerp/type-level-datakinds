@@ -1,16 +1,67 @@
-{-# LANGUAGE ScopedTypeVariables, PolyKinds, TypeFamilies, RankNTypes, ConstraintKinds, TypeOperators, UndecidableInstances #-}
-module Types.Nat where
+{-# LANGUAGE ScopedTypeVariables, DataKinds, TypeFamilies, RankNTypes, ConstraintKinds, TypeOperators, UndecidableInstances, TemplateHaskell #-}
+module Types.Nat( 
+  -- * Representation data types
+  Digit(..),
+  Nat(..),
+  nat,
+  -- * Converting between values and types
+  -- ** Digits
+  TypeDigit(..),
+  reifyDigit,
+  -- ** Naturals
+  TypeNat(..),
+  reifyNat,
+  -- * Arithmetic
+  (:+),
+  (:-),
+  (:*),
+  -- * Comparison
+  Compare,
+  (:<),
+  (:==),
+  (:>),
+  (:>=),
+  (:<=),
+ )  
+  where
 
+import Prelude hiding(Int)
 import Types.Common
 import Types.Bool
 import Types.Ord
 
-infixr :.
+import Language.Haskell.TH(Q, Type)
+
+infixl :.
 
 data Digit = D0 | D1 | D2 | D3 | D4 | D5 | D6 | D7 | D8 | D9
+
+-- | A 'Nat' is a snoc-list of 'Digit's.
+--
+-- @D1 :. D4 :. D0@ represents 140.
 data Nat 
   = Dec Digit 
   | Nat :. Digit
+
+dig :: Integer -> Q Type
+dig 0 = [t| D0 |]
+dig 1 = [t| D1 |]
+dig 2 = [t| D2 |]
+dig 3 = [t| D3 |]
+dig 4 = [t| D4 |]
+dig 5 = [t| D5 |]
+dig 6 = [t| D6 |]
+dig 7 = [t| D7 |]
+dig 8 = [t| D8 |]
+dig 9 = [t| D9 |]
+
+-- | Type quoter: for instance:
+--
+-- @v :: Vector $(nat 127) Double@
+nat :: Integer -> Q Type
+nat n = case quotRem n 10 of
+  (0, d) -> [t| Dec $(dig d) |]
+  (m, d) -> [t| $(nat m) :. $(dig d) |]
 
 --- reflecting digits
 class TypeDigit (d :: Digit) where reflectDigit :: Num a => Tagged d a
@@ -25,22 +76,10 @@ instance TypeDigit D7 where reflectDigit = Tagged 7
 instance TypeDigit D8 where reflectDigit = Tagged 8
 instance TypeDigit D9 where reflectDigit = Tagged 9
 
-type family PositiveDigit (d :: Digit) :: Bool
-type instance PositiveDigit D0 = False
-type instance PositiveDigit D1 = True
-type instance PositiveDigit D2 = True
-type instance PositiveDigit D3 = True
-type instance PositiveDigit D4 = True
-type instance PositiveDigit D5 = True
-type instance PositiveDigit D6 = True
-type instance PositiveDigit D7 = True
-type instance PositiveDigit D8 = True
-type instance PositiveDigit D9 = True
-
 -- reflect nats
 class TypeNat (n :: Nat) where reflectNat :: Num a => Tagged n a
 
-instance (Sat PositiveDigit d, TypeDigit d) => TypeNat (Dec d) where
+instance TypeDigit d => TypeNat (Dec d) where
   reflectNat = conv reflectDigit 
     where
       conv :: Tagged dig a -> Tagged (Dec dig) a 
@@ -67,13 +106,21 @@ reifyDigit 9 k = unTagged (k :: Tagged D9 r)
       
 reifyNat :: forall a r. Integral a => a -> (forall n. TypeNat n => Tagged n r) -> r
 reifyNat n k = 
-  case quotRem n of
+  case quotRem n 10 of
     (0, d) ->
-      let 
-        mk :: Tagged d r -> Tagged (Dec d) r
-        mk = Tagged . unTagged
-      in reifyDigit d (k . mk)
-    (m, d) -> undefined
+      reifyDigit d cont
+        where
+          cont :: forall d. TypeDigit d => Tagged d r
+          cont = reTag (k :: Tagged (Dec d) r)
+    (m, d) -> 
+      reifyNat m cont
+        where
+          cont :: forall n. TypeNat n => Tagged n r
+          cont = Tagged (reifyDigit d cont2)
+            where
+              cont2 :: forall d. TypeDigit d => Tagged d r
+              cont2 = reTag (k :: Tagged (n :. d) r)
+        
 
 -- addition
 type family Div10 (n :: Nat) :: Nat
@@ -106,7 +153,9 @@ type instance Succ (n :. D7) = n :. D8
 type instance Succ (n :. D8) = n :. D9
 type instance Succ (n :. D9) = (Succ n) :. D0
 
-type family (:+) (n :: Nat) (m :: Nat) :: Nat
+infixr :+
+-- | Type-level '+'
+type family (:+) (m :: Nat) (n :: Nat) :: Nat
 type instance (Dec D0) :+ n = n
 type instance (Dec D1) :+ n = Succ n
 type instance (Dec D2) :+ n = Succ (Succ n)
@@ -120,6 +169,7 @@ type instance (Dec D9) :+ n = Succ (Succ (Succ (Succ (Succ (Succ (Succ (Succ (Su
 type instance (m :. d) :+ n = (Dec d) :+ ((m :+ Div10 n) :. Mod10 n)
 
 -- comparison
+-- | Type-level 'compare'
 type family Compare (m :: Nat) (n :: Nat) :: Ordering
 -- D0
 type instance Compare (Dec D0) (Dec D0) = EQ
@@ -260,7 +310,68 @@ type a :> b = OrdEq (Compare a b) GT
 type a :>= b = Not (a :< b)
 type a :<= b = Not (a :> b)
 
---type family TypeEq a b :: Bool
---type instance TypeEq a a = True
---type instance TypeEq a b = False
---type a :<= b = (Compare a b
+-- * Subtraction
+-- | Precondition: @m ':>=' n@.
+type family Pred (n :: Nat) :: Nat
+type instance Pred (Dec D1) = (Dec D0)
+type instance Pred (Dec D2) = (Dec D1)
+type instance Pred (Dec D3) = (Dec D2)
+type instance Pred (Dec D4) = (Dec D3)
+type instance Pred (Dec D5) = (Dec D4)
+type instance Pred (Dec D6) = (Dec D5)
+type instance Pred (Dec D7) = (Dec D6)
+type instance Pred (Dec D8) = (Dec D7)
+type instance Pred (Dec D9) = (Dec D8)
+type instance Pred (Dec D1 :. D0) = (Dec D9)
+type instance Pred (Dec D2 :. D0) = (Dec D1 :. D9)
+type instance Pred (Dec D3 :. D0) = (Dec D2 :. D9)
+type instance Pred (Dec D4 :. D0) = (Dec D3 :. D9)
+type instance Pred (Dec D5 :. D0) = (Dec D4 :. D9)
+type instance Pred (Dec D6 :. D0) = (Dec D5 :. D9)
+type instance Pred (Dec D7 :. D0) = (Dec D6 :. D9)
+type instance Pred (Dec D8 :. D0) = (Dec D7 :. D9)
+type instance Pred (Dec D9 :. D0) = (Dec D8 :. D9)
+type instance Pred (xd :. xm :. D0) = Pred (xd :. xm) :. D9
+type instance Pred (xd :. D1) = (xd :. D0)
+type instance Pred (xd :. D2) = (xd :. D1)
+type instance Pred (xd :. D3) = (xd :. D2)
+type instance Pred (xd :. D4) = (xd :. D3)
+type instance Pred (xd :. D5) = (xd :. D4)
+type instance Pred (xd :. D6) = (xd :. D5)
+type instance Pred (xd :. D7) = (xd :. D6)
+type instance Pred (xd :. D8) = (xd :. D7)
+type instance Pred (xd :. D9) = (xd :. D8)
+
+-- | Type-level '-'
+infixl :-
+type family (:-) (m :: Nat) (n :: Nat) :: Nat
+type instance x :- (Dec D0) = x
+type instance x :- (Dec D1) = (Pred x) 
+type instance x :- (Dec D2) = (Pred x) :- (Dec D1)
+type instance x :- (Dec D3) = (Pred x) :- (Dec D2)
+type instance x :- (Dec D4) = (Pred x) :- (Dec D3)
+type instance x :- (Dec D5) = (Pred x) :- (Dec D4)
+type instance x :- (Dec D6) = (Pred x) :- (Dec D5)
+type instance x :- (Dec D7) = (Pred x) :- (Dec D6)
+type instance x :- (Dec D8) = (Pred x) :- (Dec D7)
+type instance x :- (Dec D9) = (Pred x) :- (Dec D8)
+type instance (xn :. xd) :- (yn :. yd) = ((xn :- yn) :. xd) :- (Dec yd)
+-- no instance (invalid)
+-- type instance (Dec xd) :- (yn :. yd)
+
+-- * Multiplication
+infixr :*
+-- | Type-level '*'
+type family (:*) (m :: Nat) (n :: Nat) :: Nat
+type instance x :* (Dec D0) = Dec D0
+type instance x :* (Dec D1) = x :+ (x :* Dec D0)
+type instance x :* (Dec D2) = x :+ (x :* Dec D1)
+type instance x :* (Dec D3) = x :+ (x :* Dec D2)
+type instance x :* (Dec D4) = x :+ (x :* Dec D3)
+type instance x :* (Dec D5) = x :+ (x :* Dec D4)
+type instance x :* (Dec D6) = x :+ (x :* Dec D5)
+type instance x :* (Dec D7) = x :+ (x :* Dec D6)
+type instance x :* (Dec D8) = x :+ (x :* Dec D7)
+type instance x :* (Dec D9) = x :+ (x :* Dec D8)
+type instance x :* (yn :. yd) = ((x :* yn) :. D0) :+ (x :* Dec yd)
+
