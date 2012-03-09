@@ -9,8 +9,13 @@ Maintainer:          reiner.pope@gmail.com
 Copyright:           Copyright (C) 2012 Reiner Pope
 Category:            Type System
 Build-type:          Simple
--- Extra-source-files:  
-Cabal-version:       >=1.2
+Cabal-version:       >=1.6
+homepage:            https://github.com/reinerp/type-level-datakinds
+bug-reports:         https://github.com/reinerp/type-level-datakinds/issues
+
+source-repository head
+  type:                 git
+  location:             git://github.com/reinerp/type-level-datakinds.git
 
 Library
   Exposed-modules:     
@@ -21,5 +26,3 @@ Library
   Build-depends:
     base >= 4.5 && <5,
     template-haskell < 2.9
-  -- Other-modules:       
-  -- Build-tools:         
